@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Advanced Routing Optimizer (TSP/VRP)</title>
+    <title>Multi-Depot VRP Optimizer</title>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&display=swap" rel="stylesheet">
     <style>
@@ -46,7 +46,7 @@
         }
         .social-sidebar a:hover { color: var(--primary); transform: translateX(5px); border-color: var(--primary); background: rgba(59, 130, 246, 0.1); }
 
-        .wrapper { width: 100%; max-width: 1200px; display: flex; flex-direction: column; gap: 25px; }
+        .wrapper { width: 100%; max-width: 1250px; display: flex; flex-direction: column; gap: 25px; }
 
         .project-header { text-align: center; padding: 10px 0 20px 0; }
         .project-header i { font-size: 50px; color: var(--primary); margin-bottom: 20px; filter: drop-shadow(0 0 15px rgba(59, 130, 246, 0.4));}
@@ -64,7 +64,14 @@
         .panel-title { font-size: 16px; font-weight: 800; text-transform: uppercase; letter-spacing: 1px; color: white; display: flex; align-items: center; gap: 10px; margin-bottom: 5px; border-bottom: 1px solid var(--glass-border); padding-bottom: 15px;}
         .panel-title i { color: var(--primary); }
 
-        /* Analitik Kutular */
+        .input-group { display: flex; flex-direction: column; gap: 8px; }
+        .input-group label { font-size: 11px; color: var(--text-muted); text-transform: uppercase; font-weight: 800; letter-spacing: 0.5px;}
+        .input-field {
+            padding: 12px 15px; background: rgba(255,255,255,0.05); border: 1px solid var(--glass-border);
+            border-radius: 8px; font-size: 14px; font-weight: 700; color: white; outline: none; font-family: 'Inter'; transition: 0.2s;
+        }
+        .input-field:focus { border-color: var(--primary); background: rgba(59, 130, 246, 0.05); }
+
         .stats-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
         .stat-box { background: rgba(0,0,0,0.3); border: 1px solid var(--glass-border); border-radius: 10px; padding: 12px; text-align: center;}
         .stat-box.full { grid-column: span 2; background: rgba(16, 185, 129, 0.05); border-color: rgba(16, 185, 129, 0.2); }
@@ -104,9 +111,8 @@
         .shape.red-sq { background: var(--depot); border-radius: 2px; box-shadow: 0 0 10px var(--depot);}
         .shape.blue-ci { background: var(--primary); border-radius: 50%; box-shadow: 0 0 10px var(--primary);}
 
-        /* Koordinat Düzlemi Görünümü İçin Canvas */
         #tsp-canvas {
-            width: 100%; height: 550px; background-color: #0f172a; border-radius: 12px;
+            width: 100%; height: 600px; background-color: #050b14; border-radius: 12px;
             border: 1px solid rgba(255,255,255,0.1); cursor: crosshair;
         }
 
@@ -129,15 +135,20 @@
         
         <header class="project-header">
             <i class="fa-solid fa-map-location-dot"></i>
-            <h1>Advanced Routing & Logistics Optimizer</h1>
-            <p>Çoklu depo (Multi-Depot) destekli Gezgin Satıcı Problemi çözücü. Koordinat düzleminde noktalarınızı belirleyin, matematiksel optimizasyonla (2-Opt Heuristics) nakliye maliyetlerinizi minimize eden en iyi rotayı simüle edin.</p>
+            <h1>Multi-Depot VRP Optimizer</h1>
+            <p>Çoklu Depo Araç Rotalama Problemi (MDVRP). Müşteriler en yakın depoya atanır (Clustering) ve her depo kendi rotasını bağımsız olarak K-Means ve 2-Opt sezgisel algoritmalarıyla optimize eder.</p>
         </header>
 
         <div class="main-grid">
             
             <div class="control-panel">
-                <div class="panel-title"><i class="fa-solid fa-chart-line"></i> Optimizasyon Analizi</div>
+                <div class="panel-title"><i class="fa-solid fa-chart-line"></i> Algoritma Girdileri & Analiz</div>
                 
+                <div class="input-group">
+                    <label>Birim Taşıma Maliyeti ($)</label>
+                    <input type="number" id="cost-input" class="input-field" value="2.5" step="0.1" min="0.1" onchange="updateStats(lastCalculatedDistance, lastSavingPercent)">
+                </div>
+
                 <div class="stats-grid">
                     <div class="stat-box">
                         <div class="stat-label">Toplam Depo</div>
@@ -152,7 +163,7 @@
                         <div class="stat-val" id="route-dist">0</div>
                     </div>
                     <div class="stat-box">
-                        <div class="stat-label">2-Opt İyileştirmesi</div>
+                        <div class="stat-label">Algoritma Kârı</div>
                         <div class="stat-val saving" id="algo-saving">%0</div>
                     </div>
                     <div class="stat-box full">
@@ -162,13 +173,13 @@
                 </div>
 
                 <div class="algo-info">
-                    <strong>Matematiksel Model:</strong><br><br>
-                    <i class="fa-solid fa-calculator" style="color: var(--primary);"></i> Maliyet Fonksiyonu: <code>Z = Mesafe × $2.5</code><br><br>
-                    İlk aşamada <em>Nearest Neighbor (En Yakın Komşu)</em> ile başlangıç çözümü bulunur. Ardından <em>2-Opt Local Search</em> algoritması kesişen yolları çözerek rotayı matematiksel olarak kısaltır ve maliyeti düşürür.
+                    <strong>Matematiksel Model (MDVRP):</strong><br><br>
+                    1. <strong>Kümeleme (Clustering):</strong> Her teslimat noktası en yakın depoya zimmetlenir.<br>
+                    2. <strong>Rotalama (Routing):</strong> Her deponun ağı için bağımsız olarak Nearest Neighbor uygulanır, ardından 2-Opt Local Search ile çapraz yollar çözülür.
                 </div>
 
-                <button class="btn btn-solve" onclick="solveTSP()"><i class="fa-solid fa-truck-fast"></i> Optimizasyonu Başlat</button>
-                <button class="btn btn-random" onclick="addRandomNodes(15)"><i class="fa-solid fa-shuffle"></i> 15 Rastgele Düğüm</button>
+                <button class="btn btn-solve" onclick="solveMDVRP()"><i class="fa-solid fa-truck-fast"></i> Optimizasyonu Başlat</button>
+                <button class="btn btn-random" onclick="addRandomNodes(15)"><i class="fa-solid fa-shuffle"></i> 15 Rastgele Nokta</button>
                 <button class="btn btn-clear" onclick="clearCanvas()"><i class="fa-solid fa-trash-can"></i> Düzlemi Temizle</button>
             </div>
 
@@ -197,6 +208,7 @@
     <script>
         const canvas = document.getElementById('tsp-canvas');
         const ctx = canvas.getContext('2d');
+        const PADDING = 40; // Eksen etiketleri için boşluk
         
         function resizeCanvas() {
             canvas.width = canvas.offsetWidth;
@@ -205,11 +217,11 @@
         }
         window.addEventListener('resize', resizeCanvas);
 
-        // nodes dizisinde nesneler tutulacak: {x, y, isDepot: boolean}
         let nodes = [];
-        let optimizedTour = [];
+        let allOptimizedTours = []; // Çoklu rota barındıracak dizi
         let isAnimating = false;
-        const COST_PER_UNIT = 2.5;
+        let lastCalculatedDistance = 0;
+        let lastSavingPercent = 0;
 
         canvas.addEventListener('click', (e) => {
             if(isAnimating) return; 
@@ -217,11 +229,13 @@
             const x = e.clientX - rect.left;
             const y = e.clientY - rect.top;
             
-            // Shift tuşuna basılıysa Depo, değilse normal düğüm
+            // Eksenlerin dışına nokta eklenmesini engelle
+            if(x < PADDING || y > canvas.height - PADDING) return;
+
             const isDepot = e.shiftKey; 
             nodes.push({ x, y, isDepot });
             
-            optimizedTour = []; 
+            allOptimizedTours = []; 
             updateStats();
             redraw();
         });
@@ -229,12 +243,11 @@
         function addRandomNodes(count) {
             if(isAnimating) return;
             
-            // Eğer hiç depo yoksa ilk noktayı zorunlu depo yap
             let hasDepot = nodes.some(n => n.isDepot);
 
             for(let i=0; i<count; i++) {
-                const x = Math.random() * (canvas.width - 60) + 30;
-                const y = Math.random() * (canvas.height - 60) + 30;
+                const x = Math.random() * (canvas.width - PADDING - 40) + PADDING + 20;
+                const y = Math.random() * (canvas.height - PADDING - 40) + 20;
                 
                 if (!hasDepot && i === 0) {
                     nodes.push({ x, y, isDepot: true });
@@ -243,7 +256,7 @@
                     nodes.push({ x, y, isDepot: false });
                 }
             }
-            optimizedTour = [];
+            allOptimizedTours = [];
             updateStats();
             redraw();
         }
@@ -251,7 +264,7 @@
         function clearCanvas() {
             if(isAnimating) return;
             nodes = [];
-            optimizedTour = [];
+            allOptimizedTours = [];
             updateStats();
             redraw();
         }
@@ -264,147 +277,195 @@
             document.getElementById('node-count').innerText = customers;
             document.getElementById('route-dist').innerText = Math.floor(distance);
             
-            // Kârı dolar formatında yaz
-            const cost = Math.floor(distance * COST_PER_UNIT);
+            // Kullanıcıdan dinamik maliyeti al
+            let unitCost = parseFloat(document.getElementById('cost-input').value);
+            if (isNaN(unitCost) || unitCost <= 0) unitCost = 2.5; // Varsayılan koruma
+
+            const cost = Math.floor(distance * unitCost);
             document.getElementById('total-cost').innerText = "$" + cost.toLocaleString('tr-TR');
             document.getElementById('algo-saving').innerText = "%" + savingPercent.toFixed(1);
+
+            // Hafızada tut
+            lastCalculatedDistance = distance;
+            lastSavingPercent = savingPercent;
         }
 
         function dist(p1, p2) {
             return Math.sqrt(Math.pow(p1.x - p2.x, 2) + Math.pow(p1.y - p2.y, 2));
         }
 
-        function calculateTourDistance(tour) {
-            if(tour.length === 0) return 0;
+        function calcLocalDist(tourArr, localNodes) {
+            if(tourArr.length === 0) return 0;
             let d = 0;
-            for(let i=0; i<tour.length; i++) {
-                d += dist(nodes[tour[i]], nodes[tour[(i+1) % tour.length]]);
+            for(let i=0; i<tourArr.length-1; i++) {
+                d += dist(localNodes[tourArr[i]], localNodes[tourArr[i+1]]);
             }
+            // TSP döngüsü: son noktadan depoya dönüş
+            d += dist(localNodes[tourArr[tourArr.length-1]], localNodes[tourArr[0]]);
             return d;
         }
 
-        // Koordinat Düzlemi Çizici
+        // Koorinat Düzlemi ve Eksenler
         function drawGrid() {
-            const gridSize = 40;
+            const gridSize = 50;
             ctx.beginPath();
-            ctx.strokeStyle = 'rgba(255, 255, 255, 0.05)';
+            ctx.strokeStyle = 'rgba(255, 255, 255, 0.08)';
             ctx.lineWidth = 1;
+            
+            ctx.fillStyle = 'rgba(255, 255, 255, 0.4)';
+            ctx.font = '10px monospace';
+            ctx.textAlign = 'center';
+            ctx.textBaseline = 'top';
 
-            for (let x = 0; x <= canvas.width; x += gridSize) {
-                ctx.moveTo(x, 0); ctx.lineTo(x, canvas.height);
+            // Dikey çizgiler ve X ekseni rakamları
+            for (let x = PADDING; x <= canvas.width; x += gridSize) {
+                ctx.moveTo(x, 0); ctx.lineTo(x, canvas.height - PADDING);
+                ctx.fillText(Math.floor(x - PADDING), x, canvas.height - PADDING + 8);
             }
-            for (let y = 0; y <= canvas.height; y += gridSize) {
-                ctx.moveTo(0, y); ctx.lineTo(canvas.width, y);
+            
+            ctx.textAlign = 'right';
+            ctx.textBaseline = 'middle';
+            
+            // Yatay çizgiler ve Y ekseni rakamları
+            for (let y = canvas.height - PADDING; y >= 0; y -= gridSize) {
+                ctx.moveTo(PADDING, y); ctx.lineTo(canvas.width, y);
+                // Y ekseni aşağıdan yukarı artar
+                ctx.fillText(Math.floor(canvas.height - PADDING - y), PADDING - 8, y);
             }
+            ctx.stroke();
+
+            // Kalın Eksen Çizgileri
+            ctx.beginPath();
+            ctx.strokeStyle = 'rgba(255, 255, 255, 0.3)';
+            ctx.lineWidth = 2;
+            ctx.moveTo(PADDING, 0); ctx.lineTo(PADDING, canvas.height - PADDING); // Y
+            ctx.moveTo(PADDING, canvas.height - PADDING); ctx.lineTo(canvas.width, canvas.height - PADDING); // X
             ctx.stroke();
         }
 
         function redraw() {
             ctx.clearRect(0, 0, canvas.width, canvas.height);
-            drawGrid(); // Arka plana ızgara çiz
+            drawGrid();
             
-            // Çizgileri çiz
-            if (optimizedTour.length > 1 && !isAnimating) {
-                ctx.beginPath();
-                ctx.moveTo(nodes[optimizedTour[0]].x, nodes[optimizedTour[0]].y);
-                for(let i=1; i<=optimizedTour.length; i++) {
-                    let index = optimizedTour[i % optimizedTour.length];
-                    ctx.lineTo(nodes[index].x, nodes[index].y);
-                }
-                ctx.strokeStyle = 'rgba(251, 191, 36, 0.7)'; 
-                ctx.lineWidth = 2.5;
-                ctx.lineJoin = 'round';
-                ctx.stroke();
+            // Rotaları Çiz (Çoklu)
+            if (allOptimizedTours.length > 0 && !isAnimating) {
+                allOptimizedTours.forEach(tourNodes => {
+                    if (tourNodes.length < 2) return;
+                    ctx.beginPath();
+                    ctx.moveTo(tourNodes[0].x, tourNodes[0].y);
+                    for(let i=1; i<tourNodes.length; i++) {
+                        ctx.lineTo(tourNodes[i].x, tourNodes[i].y);
+                    }
+                    ctx.strokeStyle = 'rgba(251, 191, 36, 0.7)'; 
+                    ctx.lineWidth = 2.5;
+                    ctx.lineJoin = 'round';
+                    ctx.stroke();
+                });
             }
 
-            // Noktaları (Düğüm/Depo) çiz
+            // Düğümleri çiz
             nodes.forEach(n => {
                 ctx.beginPath();
                 if (n.isDepot) {
-                    // Depo: Kare
                     ctx.rect(n.x - 8, n.y - 8, 16, 16);
                     ctx.fillStyle = '#ef4444';
-                    ctx.shadowBlur = 15;
-                    ctx.shadowColor = '#ef4444';
+                    ctx.shadowBlur = 15; ctx.shadowColor = '#ef4444';
                 } else {
-                    // Müşteri: Yuvarlak
                     ctx.arc(n.x, n.y, 6, 0, Math.PI * 2);
                     ctx.fillStyle = '#3b82f6';
                     ctx.shadowBlur = 0;
                 }
                 ctx.fill();
-                ctx.shadowBlur = 0; // Reset
+                ctx.shadowBlur = 0; 
             });
         }
 
-        // --- GELİŞMİŞ OPTİMİZASYON ALGORİTMASI ---
-        function solveTSP() {
+        // --- ÇOKLU DEPO MDVRP ALGORİTMASI ---
+        function solveMDVRP() {
             if (nodes.length < 3) {
-                alert("Rota oluşturabilmek için en az 3 nokta eklemelisiniz.");
+                alert("Analiz için en az 3 nokta eklemelisiniz.");
                 return;
             }
             if (isAnimating) return;
 
-            // En az 1 depo var mı kontrol et, yoksa ilk noktayı depo kabul et (Geçici)
-            let startIdx = nodes.findIndex(n => n.isDepot);
-            if(startIdx === -1) startIdx = 0; 
+            let depots = nodes.filter(n => n.isDepot);
+            let customers = nodes.filter(n => !n.isDepot);
 
-            // 1. AŞAMA: Nearest Neighbor (En Yakın Komşu)
-            let unvisited = Array.from({length: nodes.length}, (_, i) => i);
-            unvisited.splice(unvisited.indexOf(startIdx), 1);
-            
-            let tour = [startIdx]; 
-            let current = startIdx;
-
-            while (unvisited.length > 0) {
-                let nearest = -1;
-                let minDist = Infinity;
-                let removeIdx = -1;
-
-                for (let i = 0; i < unvisited.length; i++) {
-                    let candidate = unvisited[i];
-                    let d = dist(nodes[current], nodes[candidate]);
-                    if (d < minDist) {
-                        minDist = d;
-                        nearest = candidate;
-                        removeIdx = i;
-                    }
-                }
-
-                tour.push(nearest);
-                current = nearest;
-                unvisited.splice(removeIdx, 1);
+            // Depo yoksa, ilk müşteriyi zorla depo yap (Sistemin çökmemesi için)
+            if (depots.length === 0 && customers.length > 0) {
+                customers[0].isDepot = true;
+                depots.push(customers[0]);
+                customers.shift();
             }
 
-            let initialDistance = calculateTourDistance(tour);
+            // 1. AŞAMA: KÜMELEME (CLUSTERING) - Her müşteriyi en yakın depoya zimmetle
+            let clusters = depots.map(d => ({ depot: d, customers: [] }));
+            customers.forEach(c => {
+                let nearestCluster = clusters.reduce((prev, curr) => 
+                    dist(c, curr.depot) < dist(c, prev.depot) ? curr : prev
+                );
+                nearestCluster.customers.push(c);
+            });
 
-            // 2. AŞAMA: 2-Opt Algoritması (Kesişen yolları çözer)
-            let improved = true;
-            while (improved) {
-                improved = false;
-                for (let i = 1; i < tour.length - 1; i++) {
-                    for (let k = i + 1; k < tour.length; k++) {
-                        let newTour = twoOptSwap(tour, i, k);
-                        let newDist = calculateTourDistance(newTour);
-                        if (newDist < calculateTourDistance(tour) - 0.001) { // Yuvarlama hatası payı
-                            tour = newTour;
-                            improved = true;
+            allOptimizedTours = [];
+            let totalFinalDistance = 0;
+            let totalInitialDistance = 0;
+
+            // 2. AŞAMA: ROTALAMA (Her depo için ayrı ayrı TSP)
+            clusters.forEach(cluster => {
+                if (cluster.customers.length === 0) return; // Depoya atanmış müşteri yoksa geç
+
+                let localNodes = [cluster.depot, ...cluster.customers];
+                
+                // Nearest Neighbor
+                let unvisited = Array.from({length: localNodes.length - 1}, (_, i) => i + 1);
+                let tour = [0]; 
+                let current = 0;
+
+                while (unvisited.length > 0) {
+                    let nearest = -1; let minDist = Infinity; let removeIdx = -1;
+                    for (let i = 0; i < unvisited.length; i++) {
+                        let candidate = unvisited[i];
+                        let d = dist(localNodes[current], localNodes[candidate]);
+                        if (d < minDist) { minDist = d; nearest = candidate; removeIdx = i; }
+                    }
+                    tour.push(nearest);
+                    current = nearest;
+                    unvisited.splice(removeIdx, 1);
+                }
+
+                totalInitialDistance += calcLocalDist(tour, localNodes);
+
+                // 2-Opt Swap
+                let improved = true;
+                while (improved) {
+                    improved = false;
+                    for (let i = 1; i < tour.length - 1; i++) {
+                        for (let k = i + 1; k < tour.length; k++) {
+                            let newTour = twoOptSwap(tour, i, k);
+                            if (calcLocalDist(newTour, localNodes) < calcLocalDist(tour, localNodes) - 0.001) {
+                                tour = newTour;
+                                improved = true;
+                            }
                         }
                     }
                 }
-            }
 
-            optimizedTour = tour;
-            const finalDistance = calculateTourDistance(optimizedTour);
-            
-            // Tasarruf Oranını Hesapla (Ne kadar iyileşti?)
+                totalFinalDistance += calcLocalDist(tour, localNodes);
+
+                // İndeksleri gerçek obje referanslarına çevirip "Depoya Dönüş"ü ekle
+                let globalTour = tour.map(idx => localNodes[idx]);
+                globalTour.push(cluster.depot); 
+                allOptimizedTours.push(globalTour);
+            });
+
             let saving = 0;
-            if(initialDistance > 0) {
-                saving = ((initialDistance - finalDistance) / initialDistance) * 100;
+            if(totalInitialDistance > 0) {
+                saving = ((totalInitialDistance - totalFinalDistance) / totalInitialDistance) * 100;
             }
 
-            updateStats(finalDistance, saving);
-            animateRouteDrawing();
+            updateStats(totalFinalDistance, saving);
+            animateMultipleRoutes();
         }
 
         function twoOptSwap(tour, i, k) {
@@ -415,75 +476,74 @@
             return newTour;
         }
 
-        function animateRouteDrawing() {
+        // Çoklu Rotayı Animasyonlu Çizme
+        function animateMultipleRoutes() {
             isAnimating = true;
+            
+            // En uzun rotayı bul (Animasyonun bitiş süresini belirlemek için)
+            let maxSegments = Math.max(...allOptimizedTours.map(t => t.length)) - 1;
             let currentSegment = 0;
             let progress = 0; 
-            const speed = 0.06; // Çizim hızı
+            const speed = 0.05;
 
             function drawFrame() {
                 ctx.clearRect(0, 0, canvas.width, canvas.height);
                 drawGrid();
 
-                // Düğümleri çiz
                 nodes.forEach(n => {
                     ctx.beginPath();
                     if (n.isDepot) {
-                        ctx.rect(n.x - 8, n.y - 8, 16, 16);
-                        ctx.fillStyle = '#ef4444';
+                        ctx.rect(n.x - 8, n.y - 8, 16, 16); ctx.fillStyle = '#ef4444';
                     } else {
-                        ctx.arc(n.x, n.y, 6, 0, Math.PI * 2);
-                        ctx.fillStyle = '#3b82f6';
+                        ctx.arc(n.x, n.y, 6, 0, Math.PI * 2); ctx.fillStyle = '#3b82f6';
                     }
                     ctx.fill();
                 });
 
-                ctx.beginPath();
-                ctx.strokeStyle = '#fbbf24';
                 ctx.lineWidth = 2.5;
                 ctx.lineJoin = 'round';
 
-                // Tamamlanan segmentleri çiz
-                if (currentSegment > 0) {
-                    ctx.moveTo(nodes[optimizedTour[0]].x, nodes[optimizedTour[0]].y);
-                    for (let i = 1; i <= currentSegment; i++) {
-                        let nodeIdx = optimizedTour[i % optimizedTour.length];
-                        ctx.lineTo(nodes[nodeIdx].x, nodes[nodeIdx].y);
+                allOptimizedTours.forEach(tour => {
+                    ctx.beginPath();
+                    ctx.strokeStyle = 'rgba(251, 191, 36, 0.8)';
+                    
+                    // Tamamlanan kısımlar
+                    let drawLimit = Math.min(currentSegment, tour.length - 1);
+                    ctx.moveTo(tour[0].x, tour[0].y);
+                    for (let i = 1; i <= drawLimit; i++) {
+                        ctx.lineTo(tour[i].x, tour[i].y);
                     }
-                } else {
-                    ctx.moveTo(nodes[optimizedTour[0]].x, nodes[optimizedTour[0]].y);
-                }
+                    ctx.stroke();
 
-                // Şu an çizilmekte olan hareketli segment
-                let startIdx = optimizedTour[currentSegment];
-                let endIdx = optimizedTour[(currentSegment + 1) % optimizedTour.length];
-                
-                let startNode = nodes[startIdx];
-                let endNode = nodes[endIdx];
+                    // Hareketli kısım (Eğer bu rota bitmediyse)
+                    if (currentSegment < tour.length - 1) {
+                        let startNode = tour[currentSegment];
+                        let endNode = tour[currentSegment + 1];
+                        
+                        let currentX = startNode.x + (endNode.x - startNode.x) * progress;
+                        let currentY = startNode.y + (endNode.y - startNode.y) * progress;
 
-                let currentX = startNode.x + (endNode.x - startNode.x) * progress;
-                let currentY = startNode.y + (endNode.y - startNode.y) * progress;
+                        ctx.beginPath();
+                        ctx.moveTo(startNode.x, startNode.y);
+                        ctx.lineTo(currentX, currentY);
+                        ctx.stroke();
 
-                ctx.lineTo(currentX, currentY);
-                ctx.stroke();
-
-                // Çizgi başına parlayan araba/nokta efekti
-                ctx.beginPath();
-                ctx.arc(currentX, currentY, 5, 0, Math.PI * 2);
-                ctx.fillStyle = '#ffffff';
-                ctx.shadowBlur = 10;
-                ctx.shadowColor = '#ffffff';
-                ctx.fill();
-                ctx.shadowBlur = 0;
+                        // Işık efekti
+                        ctx.beginPath();
+                        ctx.arc(currentX, currentY, 5, 0, Math.PI * 2);
+                        ctx.fillStyle = '#ffffff';
+                        ctx.shadowBlur = 10; ctx.shadowColor = '#ffffff';
+                        ctx.fill(); ctx.shadowBlur = 0;
+                    }
+                });
 
                 progress += speed;
-
                 if (progress >= 1) {
                     progress = 0;
                     currentSegment++;
                 }
 
-                if (currentSegment < optimizedTour.length) {
+                if (currentSegment < maxSegments) {
                     requestAnimationFrame(drawFrame);
                 } else {
                     isAnimating = false;
